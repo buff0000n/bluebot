@@ -1,0 +1,6 @@
+atproto
+numpy
+opencv-python
+python-dateutil
+
+pip~=24.2

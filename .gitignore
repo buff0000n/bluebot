@@ -1,6 +1,5 @@
 venv*
 *.conf
 *.ini
-*.txt
 .idea
 **/__pycache__
