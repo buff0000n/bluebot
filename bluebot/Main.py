@@ -2,6 +2,7 @@ from atproto import Client
 import cv2
 from argparse import ArgumentParser
 import os
+from pathlib import Path
 
 from bluebot.LoginConfig import LoginConfig, loadLoginConfig
 from bluebot.ScheduleConfig import ScheduleConfig, ScheduleEntry, loadScheduleConfig
@@ -17,18 +18,25 @@ def getClient(loginConf: LoginConfig) -> Client:
 
 def readAndResizeImage(imagePath):
     image = cv2.imread(imagePath, 1)
-    image2 = cv2.resize(image, (int(len(image[0]) / 2), int(len(image) / 2)), interpolation=cv2.INTER_LINEAR)
-    print("read image {}, {}x{} -> {}x{}".format(imagePath, len(image[0]), len(image), len(image2[0]), len(image2)))
-    cv2.imwrite("temp.jpg", image2)
+    resizedImage = cv2.resize(image, (int(len(image[0]) / 2), int(len(image) / 2)), interpolation=cv2.INTER_LINEAR)
 
-    with open("/tmp/temp.jpg", 'rb') as f:
-        image = f.read()
+    # cv2.imwrite("temp.jpg", resizedImage)
+    # with open("/tmp/temp.jpg", 'rb') as f:
+    #     image = f.read()
+    # os.remove("/tmp/temp.jpg")
 
-    os.remove("/tmp/temp.jpg")
-    return image
+    # default JPG quality
+    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 95]
+    # write to memory
+    result, jpgImage = cv2.imencode('.jpg', resizedImage, encode_param)
+    jpgImageBytes = jpgImage.tobytes()
+
+    print("read image {}, {}x{} -> {}x{} ({} bytes)".format(imagePath, len(image[0]), len(image), len(resizedImage[0]), len(resizedImage), len(jpgImageBytes)))
+
+    return jpgImageBytes
 
 
-def sendPost(client: Client, entry: ScheduleEntry) -> None:
+def sendPost(client: Client, entry: ScheduleEntry, dry = False) -> None:
     # adapted from https://github.com/MarshalX/atproto/blob/main/examples/send_images.py
     text = entry.text
     paths = entry.images
@@ -36,14 +44,26 @@ def sendPost(client: Client, entry: ScheduleEntry) -> None:
 
     images = [readAndResizeImage(path) for path in paths]
 
-    client.send_images(text=text, images=images, image_alts=image_alts)
+    print("Sending post:\n{}".format(entry))
+    for image in images:
+        print("Sending image ({} bytes)".format(len(image)))
+
+    if dry:
+        print("Dry Run")
+    else:
+        client.send_images(text=text, images=images, image_alts=image_alts)
 
 
-def run(loginConf: LoginConfig, scheduleConf: ScheduleConfig, statePath, dry = False) -> None:
+def run(loginConf: LoginConfig, scheduleConf: ScheduleConfig, statePath, dry = False, verify = False) -> None:
     lastTimestamp = TimestampFile.loadTimestamp(statePath)
     currentTimestamp = TimestampFile.currentTimeStamp()
 
-    entriesToSend = scheduleConf.getEntriesBetween(lastTimestamp, currentTimestamp)
+    if verify:
+        entriesToSend = scheduleConf.getAllEntries()
+        dry = True
+    else:
+        entriesToSend = scheduleConf.getEntriesBetween(lastTimestamp, currentTimestamp)
+
     if len(entriesToSend) == 0:
         print("Found no entries to send")
     else:
@@ -53,11 +73,7 @@ def run(loginConf: LoginConfig, scheduleConf: ScheduleConfig, statePath, dry = F
             client = getClient(loginConf)
 
         for e in entriesToSend:
-            if dry:
-                print("Dry Run: Sending post:\n{}".format(e))
-            else:
-                print("Sending post:\n{}".format(e))
-                # sendPost(client, e)
+            sendPost(client, e, dry)
 
     if not dry:
         TimestampFile.saveTimestamp(statePath, currentTimestamp)
@@ -72,6 +88,7 @@ def main():
     parser.add_argument('-l', '--login', required=True)
     parser.add_argument('-t', '--state', required=True)
     parser.add_argument('--dry', action='store_true')
+    parser.add_argument('--verify', action='store_true')
 
     args = parser.parse_args()
 
@@ -79,5 +96,10 @@ def main():
     scheduleConf = loadScheduleConfig(args.schedule)
     statePath = args.state
     dry = args.dry
+    verify = args.verify
 
-    run(loginConf, scheduleConf, statePath, dry)
+    scheduleFile = Path(args.schedule)
+    scheduleDir = scheduleFile.parent
+    os.chdir(scheduleDir)
+
+    run(loginConf, scheduleConf, statePath, dry, verify)

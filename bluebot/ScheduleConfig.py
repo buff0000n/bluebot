@@ -37,6 +37,9 @@ class ScheduleConfig:
     def getEntriesBetween(self, startTimestamp, endTimestamp) -> list[ScheduleEntry]:
         return [e for e in self.entries if startTimestamp < e.timestamp <= endTimestamp]
 
+    def getAllEntries(self):
+        return self.entries
+
     def __str__(self):
         ret = ""
         for index, entry in enumerate(self.entries):
