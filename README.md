@@ -81,6 +81,7 @@ image.4=test-image-4.png
 alt.4=up to four images are supported
 ```
  * The `[..]` lines separate individual posts.  The actual contents in between the brackets doesn't matter as long as it's unique.
+   * A lot of formats are supported, but I recommend sticking with `YYYY-MM-DD HH:MM:SS`
  * `timestamp`: The timestamp for the post.  As soon as this time passes, bluebot will send the post the next time it's run.
  * `text`: The text of the post
  * `image.1`: The path to the first image file.  If this is a relative path then it's relative to the directory containing the config file.
@@ -88,3 +89,7 @@ alt.4=up to four images are supported
  * `image.2`, `image.3`, `image.4`: Second, third, and fourth images, if provided
  * `alt.2`, `alt.3`, `alt.4`: Alt text for the second, third, and fourth images, if provided
 
+## TODO
+ * Code comments
+ * Timezone support
+ * Multi-line text support
