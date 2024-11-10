@@ -1,8 +1,10 @@
 from atproto import Client
+from atproto import client_utils
 import cv2
 from argparse import ArgumentParser
 import os
 from pathlib import Path
+import re
 
 from bluebot.LoginConfig import LoginConfig, loadLoginConfig
 from bluebot.ScheduleConfig import ScheduleConfig, ScheduleEntry, loadScheduleConfig
@@ -38,11 +40,28 @@ def readAndResizeImage(imagePath):
 
 def sendPost(client: Client, entry: ScheduleEntry, dry = False) -> None:
     # adapted from https://github.com/MarshalX/atproto/blob/main/examples/send_images.py
+    #          and https://atproto.blue/en/latest/atproto_client/utils/text_builder.html
     text = entry.text
     paths = entry.images
     image_alts = entry.alts
 
     images = [readAndResizeImage(path) for path in paths]
+
+    textBuilder = client_utils.TextBuilder()
+    index = 0
+    while True:
+        match = re.search("#([^ #]+)", text[index:])
+        if match is None:
+            break
+        if match.span()[0] > index:
+            print("Adding text: " + text[index:match.span()[0]])
+            textBuilder.text(text[index:match.span()[0]])
+        print("Adding tag: " + match.group(0))
+        textBuilder.tag(match.group(0), match.group(1))
+        index = match.span()[1]
+    if index < len(text):
+        print("Adding last text: " + text[index:len(text)])
+        textBuilder.text(text[index:len(text)])
 
     print("Sending post:\n{}".format(entry))
     for image in images:
@@ -51,17 +70,22 @@ def sendPost(client: Client, entry: ScheduleEntry, dry = False) -> None:
     if dry:
         print("Dry Run")
     else:
-        client.send_images(text=text, images=images, image_alts=image_alts)
+        client.send_images(text=textBuilder, images=images, image_alts=image_alts)
 
 
-def run(loginConf: LoginConfig, scheduleConf: ScheduleConfig, statePath, dry = False, verify = False) -> None:
-    lastTimestamp = TimestampFile.loadTimestamp(statePath)
-    currentTimestamp = TimestampFile.currentTimeStamp()
-
-    if verify:
+def run(loginConf: LoginConfig, scheduleConf: ScheduleConfig, statePath, dry = False, verify = False, force = None) -> None:
+    if force is not None:
+        entriesToSend = scheduleConf.getEntry(force)
+        if len(entriesToSend) == 0:
+            raise(Exception("Entry {} not found".format(force)))
+        currentTimestamp = None
+    elif verify:
         entriesToSend = scheduleConf.getAllEntries()
         dry = True
+        currentTimestamp = None
     else:
+        lastTimestamp = TimestampFile.loadTimestamp(statePath)
+        currentTimestamp = TimestampFile.currentTimeStamp()
         entriesToSend = scheduleConf.getEntriesBetween(lastTimestamp, currentTimestamp)
 
     if len(entriesToSend) == 0:
@@ -75,7 +99,7 @@ def run(loginConf: LoginConfig, scheduleConf: ScheduleConfig, statePath, dry = F
         for e in entriesToSend:
             sendPost(client, e, dry)
 
-    if not dry:
+    if force is None and not dry:
         TimestampFile.saveTimestamp(statePath, currentTimestamp)
 
 
@@ -89,6 +113,7 @@ def main():
     parser.add_argument('-t', '--state', required=True)
     parser.add_argument('--dry', action='store_true')
     parser.add_argument('--verify', action='store_true')
+    parser.add_argument('--force', required=False)
 
     args = parser.parse_args()
 
@@ -97,9 +122,10 @@ def main():
     statePath = args.state
     dry = args.dry
     verify = args.verify
+    force = args.force
 
     scheduleFile = Path(args.schedule)
     scheduleDir = scheduleFile.parent
     os.chdir(scheduleDir)
 
-    run(loginConf, scheduleConf, statePath, dry, verify)
+    run(loginConf, scheduleConf, statePath, dry, verify, force)

@@ -3,6 +3,7 @@ from dateutil.parser import parse
 
 class ScheduleEntry:
     def __init__(self, configSection: SectionProxy):
+        self.name = configSection.name
         self.text = configSection.get("text")
         self.timestamp = parse(configSection.get("timestamp"))
         self.images = []
@@ -37,8 +38,11 @@ class ScheduleConfig:
     def getEntriesBetween(self, startTimestamp, endTimestamp) -> list[ScheduleEntry]:
         return [e for e in self.entries if startTimestamp < e.timestamp <= endTimestamp]
 
-    def getAllEntries(self):
+    def getAllEntries(self) -> list[ScheduleEntry]:
         return self.entries
+
+    def getEntry(self, name) -> list[ScheduleEntry]:
+        return [e for e in self.entries if e.name == name]
 
     def __str__(self):
         ret = ""
