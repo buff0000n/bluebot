@@ -9,6 +9,7 @@ import re
 from bluebot.LoginConfig import LoginConfig, loadLoginConfig
 from bluebot.ScheduleConfig import ScheduleConfig, ScheduleEntry, loadScheduleConfig
 from bluebot import TimestampFile
+from bluebot import client_more_utils
 
 
 def getClient(loginConf: LoginConfig) -> Client:
@@ -27,7 +28,9 @@ def readAndResizeImage(imagePath):
     image = cv2.imread(imagePath, 1)
     # resize by 50%
     # todo: make this configurable?
-    resizedImage = cv2.resize(image, (int(len(image[0]) / 2), int(len(image) / 2)), interpolation=cv2.INTER_LINEAR)
+    width = int(len(image[0]) / 2)
+    height = int(len(image) / 2)
+    resizedImage = cv2.resize(image, (width, height), interpolation=cv2.INTER_LINEAR)
 
     # default JPG quality
     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 95]
@@ -39,7 +42,7 @@ def readAndResizeImage(imagePath):
     print("read image {}, {}x{} -> {}x{} ({} bytes)".format(imagePath, len(image[0]), len(image), len(resizedImage[0]), len(resizedImage), len(jpgImageBytes)))
 
     # return the image file bytes
-    return jpgImageBytes
+    return jpgImageBytes, height, width
 
 
 def sendPost(client: Client, entry: ScheduleEntry, dry = False) -> None:
@@ -51,7 +54,7 @@ def sendPost(client: Client, entry: ScheduleEntry, dry = False) -> None:
     image_alts = entry.alts
 
     # read images and resize by 50%
-    images = [readAndResizeImage(path) for path in paths]
+    image_info = [readAndResizeImage(path) for path in paths]
 
     # start a text builder
     textBuilder = client_utils.TextBuilder()
@@ -90,15 +93,19 @@ def sendPost(client: Client, entry: ScheduleEntry, dry = False) -> None:
 
     # logging
     print("Sending post:\n{}".format(entry))
-    for image in images:
-        print("Sending image ({} bytes)".format(len(image)))
+    for (image, height, width) in image_info:
+        print("Sending {}x{} image ({} bytes)".format(width, height, len(image)))
 
     if dry:
         # Dry run, don't send anything
         print("Dry Run")
     else:
-        # call the client API with the text builder, images, and alts
-        client.send_images(text=textBuilder, images=images, image_alts=image_alts)
+        # call the client API with the text builder, images, alts, and dimensions
+        # provided method doesn't support dimensions
+        #client.send_images(text=textBuilder, images=images, image_alts=image_alts)
+        images = [e[0] for e in image_info]
+        image_dims = [(e[1], e[2]) for e in image_info]
+        client_more_utils.send_images_with_dimensions(client=client, text=textBuilder, images=images, image_alts=image_alts, image_dims=image_dims)
 
 
 def run(loginConf: LoginConfig, scheduleConf: ScheduleConfig, statePath, dry = False, verify = False, force = None) -> None:
